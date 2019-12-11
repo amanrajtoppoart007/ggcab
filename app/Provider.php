@@ -47,7 +47,7 @@ class Provider extends Authenticatable
      */
     public function service()
     {
-        return $this->hasOne('App\ProviderService');
+        return $this->belongsTo('App\ProviderService','id','provider_id');
     }
 
     /**

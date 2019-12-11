@@ -29,7 +29,7 @@ class ProviderService extends Model
      */
     public function provider()
     {
-        return $this->belongsTo('App\Provider');
+        return $this->hasOne('App\Provider');
     }
 
     public function service_type()

@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-
+use Illuminate\Database\Eloquent\Builder;
 use DB;
 use Log;
 use Auth;
@@ -286,7 +286,7 @@ class UserApiController extends Controller
     public function send_request(Request $request) {
 	$input['input_request'] = json_encode($request->all());
         $input['function_name'] = 'user.send_request';
-        \DB::table('logs')->insert($input);
+        /* \DB::table('logs')->insert($input); */
         $this->validate($request, [
                 's_latitude' => 'required|numeric',
                 'd_latitude' => 'required|numeric',
@@ -299,8 +299,8 @@ class UserApiController extends Controller
                 'payment_mode' => 'required|in:WALLET,CASH,CARD,PAYPAL',
             ]);
 
-        Log::info('New Request from User: '.Auth::user()->id);
-        Log::info('Request Details:', $request->all());
+        /* Log::info('New Request from User: '.Auth::user()->id);
+        Log::info('Request Details:', $request->all()); */
 
         $ActiveRequests = UserRequests::PendingRequest(Auth::user()->id)->count();
 
@@ -312,7 +312,9 @@ class UserApiController extends Controller
             }
         }
 
-        if($request->has('schedule_date') && $request->has('schedule_time')){
+        if((!empty($request->schedule_date)) && (!empty($request->schedule_time)))
+        {
+            
             $beforeschedule_time = (new Carbon("$request->schedule_date $request->schedule_time"))->subHour(1);
             $afterschedule_time = (new Carbon("$request->schedule_date $request->schedule_time"))->addHour(1);
 
@@ -331,24 +333,24 @@ class UserApiController extends Controller
             }
 
         }
-
+       
         $distance = Setting::get('provider_search_radius', '10');
         $latitude = $request->s_latitude;
         $longitude = $request->s_longitude;
         $service_type = $request->service_type;
-
         $Providers = Provider::with('service')
             ->select(DB::Raw("(6371 * acos( cos( radians('$latitude') ) * cos( radians(latitude) ) * cos( radians(longitude) - radians('$longitude') ) + sin( radians('$latitude') ) * sin( radians(latitude) ) ) ) AS distance"),'id')
             ->where('status', 'approved')
             ->whereRaw("(6371 * acos( cos( radians('$latitude') ) * cos( radians(latitude) ) * cos( radians(longitude) - radians('$longitude') ) + sin( radians('$latitude') ) * sin( radians(latitude) ) ) ) <= $distance")
-            ->whereHas('service', function($query) use ($service_type){
+            ->whereHas('service', function(Builder $query) use ($service_type)
+            {
                         $query->where('status','active');
                         $query->where('service_type_id',$service_type);
+                        
                     })
             ->orderBy('distance','asc')
             ->take(10)
             ->get();
-
         // List Providers who are currently busy and add them to the filter list.
 	// return $Providers;
 	
@@ -364,12 +366,12 @@ class UserApiController extends Controller
             }
         }
 
-        try{
-
+         try{ 
+               
             $details = "https://maps.googleapis.com/maps/api/directions/json?origin=".$request->s_latitude.",".$request->s_longitude."&destination=".$request->d_latitude.",".$request->d_longitude."&mode=driving&key=".Setting::get('map_key');
-
+              
             $json = curl($details);
-
+             
             $details = json_decode($json, TRUE);
 
             $route_key = $details['routes'][0]['overview_polyline']['points'];
@@ -383,7 +385,7 @@ class UserApiController extends Controller
             }else{
                 $UserRequest->current_provider_id = 0;
             }
-
+               
             $UserRequest->service_type_id = $request->service_type;
             $UserRequest->payment_mode = $request->payment_mode;
             $UserRequest->is_evening = (isset($request->is_evening)) ? $request->is_evening : 0; //To calculate is_evening charge; 
@@ -405,7 +407,7 @@ class UserApiController extends Controller
             if(Setting::get('track_distance', 0) == 1){
                 $UserRequest->is_track = "YES";
             }
-
+            
             $UserRequest->assigned_at = Carbon::now();
             $UserRequest->route_key = $route_key;
 
@@ -417,15 +419,15 @@ class UserApiController extends Controller
                 $UserRequest->schedule_at = date("Y-m-d H:i:s",strtotime("$request->schedule_date $request->schedule_time"));
             }
 
-             if((Setting::get('manual_request',0) == 0) && (Setting::get('broadcast_request',0) == 0)){
+             if((Setting::get('manual_request',0) == 0) && (Setting::get('broadcast_request',0) == 0))
+             {
                 Log::info('New Request id : '. $UserRequest->id .' Assigned to provider : '. $UserRequest->current_provider_id);
                 (new SendPushNotification)->IncomingRequest($Providers[0]->id);
-            }
-
-            $UserRequest->save();
-
+              }
+             
+             $UserRequest->save();
             // update payment mode 
-
+         
             User::where('id',Auth::user()->id)->update(['payment_mode' => $request->payment_mode]);
 
             if($request->has('card_id')){
@@ -433,7 +435,7 @@ class UserApiController extends Controller
                 Card::where('user_id',Auth::user()->id)->update(['is_default' => 0]);
                 Card::where('card_id',$request->card_id)->update(['is_default' => 1]);
             }
-
+ 
             if(Setting::get('manual_request',0) == 0){
                 foreach ($Providers as $key => $Provider) {
 
@@ -462,7 +464,7 @@ class UserApiController extends Controller
             }
 
         } catch (Exception $e) {
-        Log::info('New Request from User: '.$e->getmessage());
+        Log::info('New Request from User: '.$e->getmessage()); 
             if($request->ajax()) {
                 return response()->json(['error' => trans('api.something_went_wrong')], 500);
             }else{
@@ -745,10 +747,12 @@ class UserApiController extends Controller
      */
 
     public function estimated_fare(Request $request){
+        
     $input['input_request'] = json_encode($request->all());
+    
         $input['function_name'] = 'user.estimated_fare';
-        \DB::table('logs')->insert($input);
-        \Log::info('Estimate', $request->all());
+        /* dd(DB::table('logs')->insert($input));
+        Log::info('Estimate', $request->all()); */
         $this->validate($request,[
                 's_latitude' => 'required|numeric',
                 's_longitude' => 'required|numeric',
@@ -756,13 +760,12 @@ class UserApiController extends Controller
                 'd_longitude' => 'required|numeric',
                 'service_type' => 'required|numeric|exists:service_types,id',
             ]);
-
         try{
           
             $details = "https://maps.googleapis.com/maps/api/distancematrix/json?origins=".$request->s_latitude.",".$request->s_longitude."&destinations=".$request->d_latitude.",".$request->d_longitude."&mode=driving&sensor=false&key=".Setting::get('map_key');
-		
+            
             $json = curl($details);
-
+             
             $details = json_decode($json, TRUE);
 		
             $meter = $details['rows'][0]['elements'][0]['distance']['value'];
@@ -818,12 +821,12 @@ class UserApiController extends Controller
             * Reported by Jeya, previously it was hardcoded. we have changed as based on surge percentage.
             */ 
             $surge_percentage = 1+(Setting::get('surge_percentage')/100)."X";
-            
             $userId = isset(Auth::user()->id) ? Auth::user()->id : null;
             $wallet = Wallet::where('user_id', $userId)->first();
+            
             $wallet_balance = isset($wallet) ? $wallet->total_amount : 0;
             
-	
+
             return response()->json([
                     'estimated_fare' => round($total,2), 
                     'distance' => $kilometer,
